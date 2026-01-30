@@ -1,0 +1,19 @@
+# Dados sensíveis - NUNCA sobem para o GitHub!
+*.xlsx
+*.xls
+*.csv
+dados/
+temp.xlsx
+
+# Ambiente virtual Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
