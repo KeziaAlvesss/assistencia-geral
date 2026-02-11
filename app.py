@@ -232,15 +232,60 @@ else:
         help="Escolha um ou mais status para filtrar"
     )
 
-# Filtro de período
+# ============================================
+# FILTRO DE PERÍODO - SUBSTITUÍDO POR SELETOR DE INTERVALO DE DATAS
+# ============================================
 if col_data:
     st.sidebar.subheader("📅 Período")
-    periodo = st.sidebar.selectbox(
-        "Período",
-        ["Todo o período", "Últimos 7 dias", "Últimos 15 dias", "Últimos 30 dias", "Últimos 90 dias"]
+    
+    # Opção para alternar entre período completo e personalizado
+    periodo_opcao = st.sidebar.radio(
+        "Tipo de período",
+        ["Todo o período", "Personalizar intervalo"],
+        horizontal=True,
+        key="periodo_tipo"
     )
+    
+    if periodo_opcao == "Personalizar intervalo":
+        # Obter datas mínima e máxima dos dados para limitar o seletor
+        try:
+            datas_validas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True).dropna()
+            data_min = datas_validas.min().date() if not datas_validas.empty else (datetime.now().date() - timedelta(days=365))
+            data_max = datas_validas.max().date() if not datas_validas.empty else datetime.now().date()
+        except:
+            data_min = datetime.now().date() - timedelta(days=365)
+            data_max = datetime.now().date()
+        
+        col_start, col_end = st.sidebar.columns(2)
+        with col_start:
+            data_inicio = st.date_input(
+                "Data inicial",
+                value=data_max - timedelta(days=30) if (data_max - timedelta(days=30)) > data_min else data_min,
+                min_value=data_min,
+                max_value=data_max,
+                key="data_inicio"
+            )
+        with col_end:
+            data_fim = st.date_input(
+                "Data final",
+                value=data_max,
+                min_value=data_min,
+                max_value=data_max,
+                key="data_fim"
+            )
+        
+        # Validação do intervalo
+        if data_inicio > data_fim:
+            st.sidebar.error("⚠️ Data inicial não pode ser maior que a data final!")
+            st.sidebar.info(f"Selecione um intervalo válido entre {data_min.strftime('%d/%m/%Y')} e {data_max.strftime('%d/%m/%Y')}")
+            data_inicio = data_fim  # Forçar correção mínima
+    else:
+        data_inicio = None
+        data_fim = None
 else:
-    periodo = "Todo o período"
+    periodo_opcao = "Todo o período"
+    data_inicio = None
+    data_fim = None
 
 # Filtro de busca livre
 st.sidebar.subheader("🔍 Busca")
@@ -258,8 +303,12 @@ if col_departamento and dept_selecionados:
 if status_selecionados:
     df_filtrado = df_filtrado[df_filtrado['status_normalizado'].isin(status_selecionados)].copy()
 
-if col_data and periodo != "Todo o período":
+# ============================================
+# APLICAR FILTRO DE PERÍODO PERSONALIZADO
+# ============================================
+if col_data and periodo_opcao == "Personalizar intervalo" and data_inicio and data_fim:
     try:
+        # Converter coluna de data apenas para o DataFrame filtrado atual
         df_filtrado['data_convertida'] = pd.to_datetime(
             df_filtrado[col_data], 
             errors='coerce',
@@ -267,13 +316,20 @@ if col_data and periodo != "Todo o período":
         )
         df_filtrado = df_filtrado.dropna(subset=['data_convertida'])
         
-        dias_map = {"Últimos 7 dias": 7, "Últimos 15 dias": 15, "Últimos 30 dias": 30, "Últimos 90 dias": 90}
-        dias_qtd = dias_map[periodo]
-        data_limite = datetime.now() - timedelta(days=dias_qtd)
-        df_filtrado = df_filtrado[df_filtrado['data_convertida'] >= data_limite]
+        # Definir intervalo com precisão de dia inteiro
+        start_datetime = pd.Timestamp(data_inicio)
+        end_datetime = pd.Timestamp(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
         
+        # Aplicar filtro
+        df_filtrado = df_filtrado[
+            (df_filtrado['data_convertida'] >= start_datetime) & 
+            (df_filtrado['data_convertida'] <= end_datetime)
+        ]
+        
+        # Remover coluna temporária se não for usada nos gráficos
+        # (será recriada nos gráficos que precisarem)
     except Exception as e:
-        st.sidebar.warning(f"⚠️ Não foi possível filtrar por data: {e}")
+        st.sidebar.warning(f"⚠️ Erro ao filtrar datas: {str(e)[:100]}")
 
 if busca:
     busca_lower = busca.lower()
@@ -651,13 +707,22 @@ st.components.v1.html(
     height=0
 )
 
-# Informações na sidebar
+# ============================================
+# INFORMAÇÕES NA SIDEBAR - ATUALIZADO
+# ============================================
 st.sidebar.markdown("---")
 st.sidebar.success(f"✅ {len(df_filtrado):,} registros filtrados")
+
+# Formatar texto do período para exibição
+if periodo_opcao == "Todo o período":
+    periodo_texto = "Todo o período"
+else:
+    periodo_texto = f"{data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+
 st.sidebar.info(f"""
 📊 **Resumo dos Filtros:**
 - Regiões: {', '.join(regioes_selecionadas) if regioes_selecionadas else 'Nenhuma'}
 - Status: {len(status_selecionados)} selecionados
 - {"Departamento: " + str(len(dept_selecionados)) + " selecionados" if col_departamento and dept_selecionados else "Sem filtro de departamento"}
-- Período: {periodo}
+- Período: {periodo_texto}
 """)
