@@ -42,7 +42,7 @@ if uploaded_file is None:
     ✅ **Totalmente seguro:** Seus dados nunca saem do seu computador
     ✅ **Atualização automática:** A página recarrega a cada 15 segundos
     
-    📌 **Sua planilha deve conter uma coluna "Região" com valores: Região 1, Região 2, Região 3**
+    📌 **Sua planilha deve conter uma coluna "Região" com valores: Região 1, Região 2, Região 3 ou Atacado/Diretoria**
     """)
     st.stop()
 
@@ -92,11 +92,11 @@ if not col_status:
     st.write("Colunas disponíveis:", list(df.columns))
     st.stop()
 
-# Identificar coluna de região (ESPECÍFICO PARA REGIÃO 1/2/3)
+# Identificar coluna de região (ESPECÍFICO PARA REGIÃO 1/2/3 + ATACADO/DIRETORIA)
 col_regiao = None
 for col in df.columns:
     col_lower = str(col).strip().lower().replace('ç', 'c').replace('ã', 'a').replace('õ', 'o')
-    if any(keyword in col_lower for keyword in ['regiao', 'região', 'regional']):
+    if any(keyword in col_lower for keyword in ['regiao', 'região', 'regional', 'canal', 'venda']):
         col_regiao = col
         break
 
@@ -104,7 +104,7 @@ for col in df.columns:
 col_departamento = None
 for col in df.columns:
     col_lower = str(col).strip().lower().replace('ç', 'c').replace('ã', 'a').replace('õ', 'o')
-    if any(keyword in col_lower for keyword in ['departamento', 'setor', 'area', 'área', 'dept', 'unidade', 'equipe', 'time']):
+    if any(keyword in col_lower for keyword in ['departamento', 'setor', 'area', 'área', 'dept', 'unidade', 'equipe', 'time', 'setor']):
         col_departamento = col
         break
 
@@ -112,7 +112,7 @@ for col in df.columns:
 col_data = None
 for col in df.columns:
     col_lower = str(col).strip().lower()
-    if any(keyword in col_lower for keyword in ['data', 'dt_', 'abertura', 'entrada', 'registro']):
+    if any(keyword in col_lower for keyword in ['data', 'dt_', 'abertura', 'entrada', 'registro', 'solicitacao', 'solicitação']):
         col_data = col
         break
 
@@ -123,20 +123,33 @@ for col in df.columns:
 # Normalizar status
 df['status_normalizado'] = df[col_status].fillna('').astype(str).str.strip()
 
-# Normalizar região (PADRONIZAÇÃO PARA REGIÃO 1/2/3)
+# Normalizar região (PADRONIZAÇÃO PARA REGIÃO 1/2/3 + ATACADO/DIRETORIA)
 if col_regiao:
-    df['regiao_normalizada'] = df[col_regiao].fillna('Não especificada').astype(str).str.strip()
-    # Padronizar para "Região X" mesmo se vier como "regiao 1", "REGIÃO 1", etc.
+    df['regiao_normalizada'] = df[col_regiao].fillna('Atacado/Diretoria').astype(str).str.strip()
+    # Padronizar valores para as regiões conhecidas
     df['regiao_normalizada'] = df['regiao_normalizada'].str.lower()
-    df['regiao_normalizada'] = df['regiao_normalizada'].str.replace('regiao', 'Região', regex=False)
-    df['regiao_normalizada'] = df['regiao_normalizada'].str.replace('região', 'Região', regex=False)
-    df['regiao_normalizada'] = df['regiao_normalizada'].str.replace(r'\s+', ' ', regex=True).str.strip()
     
-    # Garantir que só existam Região 1, 2, 3 ou "Não especificada"
-    regioes_validas = ['Região 1', 'Região 2', 'Região 3']
-    df['regiao_normalizada'] = df['regiao_normalizada'].apply(
-        lambda x: x if x in regioes_validas else 'Não especificada'
-    )
+    # Mapeamento inteligente para padronizar diferentes formas de escrita
+    def padronizar_regiao(valor):
+        valor_lower = valor.lower().strip()
+        
+        # Região 1
+        if any(k in valor_lower for k in ['regiao 1', 'região 1', 'reg1', 'r1', 'reg 1', 'região1', 'regiao1']):
+            return 'Região 1'
+        # Região 2
+        elif any(k in valor_lower for k in ['regiao 2', 'região 2', 'reg2', 'r2', 'reg 2', 'região2', 'regiao2']):
+            return 'Região 2'
+        # Região 3
+        elif any(k in valor_lower for k in ['regiao 3', 'região 3', 'reg3', 'r3', 'reg 3', 'região3', 'regiao3']):
+            return 'Região 3'
+        # Atacado/Diretoria (tratar valores vazios, nulos ou genéricos como atacado)
+        elif any(k in valor_lower for k in ['não especificada', 'nao especificada', 'n/a', 'sem região', 'sem regiao', 'atacado', 'diretoria', 'matriz', 'corporativo', 'corporate', 'head', 'hq', 'central', '-', '']):
+            return 'Atacado/Diretoria'
+        else:
+            # Manter o valor original mas capitalizado
+            return valor.title() if valor else 'Atacado/Diretoria'
+    
+    df['regiao_normalizada'] = df['regiao_normalizada'].apply(padronizar_regiao)
 else:
     df['regiao_normalizada'] = 'Todas'
 
@@ -153,10 +166,8 @@ else:
 todos_status = df['status_normalizado'].unique()
 todos_status = sorted([s for s in todos_status if s and s != 'nan' and s != ''])
 
-# Regiões fixas (Região 1, 2, 3) + Não especificada
-todas_regioes = ['Região 1', 'Região 2', 'Região 3']
-if 'Não especificada' in df['regiao_normalizada'].unique():
-    todas_regioes.append('Não especificada')
+# Regiões fixas (Região 1, 2, 3) + Atacado/Diretoria
+todas_regioes = ['Região 1', 'Região 2', 'Região 3', 'Atacado/Diretoria']
 
 todos_departamentos = []
 if col_departamento:
@@ -167,16 +178,16 @@ st.sidebar.markdown("---")
 st.sidebar.header("🔍 Filtros")
 
 # ============================================
-# FILTRO DE REGIÃO (OTIMIZADO PARA REGIÃO 1/2/3)
+# FILTRO DE REGIÃO (OTIMIZADO PARA REGIÃO 1/2/3 + ATACADO/DIRETORIA)
 # ============================================
 st.sidebar.subheader("🌍 Região")
 
-# Cores específicas para cada região
+# Cores específicas para cada região/canal
 cores_regiao_map = {
-    'Região 1': '#3498db',   # Azul
-    'Região 2': '#2ecc71',   # Verde
-    'Região 3': '#e74c3c',   # Vermelho
-    'Não especificada': '#95a5a6'  # Cinza
+    'Região 1': '#3498db',        # Azul - Varejo Regional 1
+    'Região 2': '#2ecc71',        # Verde - Varejo Regional 2
+    'Região 3': '#e74c3c',        # Vermelho - Varejo Regional 3
+    'Atacado/Diretoria': '#9b59b6'  # Roxo - Canal corporativo/atacado
 }
 
 selecionar_todas_regioes = st.sidebar.checkbox("Selecionar todas as regiões", value=True, key="regiao_todos")
@@ -184,19 +195,12 @@ selecionar_todas_regioes = st.sidebar.checkbox("Selecionar todas as regiões", v
 if selecionar_todas_regioes:
     regioes_selecionadas = todas_regioes
 else:
-    # Exibir com cores visuais nos labels
-    opcoes_regioes = []
-    for reg in todas_regioes:
-        cor = cores_regiao_map.get(reg, '#95a5a6')
-        opcoes_regioes.append(f"{reg} •")
-    
-    regioes_selecionadas_nomes = st.sidebar.multiselect(
+    regioes_selecionadas = st.sidebar.multiselect(
         "Selecione as regiões:",
         options=todas_regioes,
         default=todas_regioes[:min(3, len(todas_regioes))],
         help="Escolha uma ou mais regiões para filtrar"
     )
-    regioes_selecionadas = regioes_selecionadas_nomes
 
 # ============================================
 # FILTROS RESTANTES (STATUS, DEPARTAMENTO, PERÍODO)
@@ -233,7 +237,7 @@ else:
     )
 
 # ============================================
-# FILTRO DE PERÍODO - SUBSTITUÍDO POR SELETOR DE INTERVALO DE DATAS
+# FILTRO DE PERÍODO - SELETOR DE INTERVALO DE DATAS PERSONALIZADO
 # ============================================
 if col_data:
     st.sidebar.subheader("📅 Período")
@@ -325,9 +329,6 @@ if col_data and periodo_opcao == "Personalizar intervalo" and data_inicio and da
             (df_filtrado['data_convertida'] >= start_datetime) & 
             (df_filtrado['data_convertida'] <= end_datetime)
         ]
-        
-        # Remover coluna temporária se não for usada nos gráficos
-        # (será recriada nos gráficos que precisarem)
     except Exception as e:
         st.sidebar.warning(f"⚠️ Erro ao filtrar datas: {str(e)[:100]}")
 
@@ -391,10 +392,10 @@ else:
     st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados.")
 
 # ============================================
-# MÉTRICAS POR REGIÃO (OTIMIZADO PARA REGIÃO 1/2/3)
+# MÉTRICAS POR REGIÃO/CANAL (REGIÃO 1/2/3 + ATACADO/DIRETORIA)
 # ============================================
 st.markdown("---")
-st.subheader("🌍 Análise por Região")
+st.subheader("🌍 Análise por Região/Canal")
 
 contagem_regiao = df_filtrado['regiao_normalizada'].value_counts().reindex(todas_regioes, fill_value=0)
 
@@ -404,15 +405,15 @@ if len(contagem_regiao) > 0:
     for idx, (regiao, quantidade) in enumerate(contagem_regiao.items()):
         with cols[idx]:
             cor = cores_regiao_map.get(regiao, '#95a5a6')
-            icone = "📍"
+            # Ícones diferenciados
             if regiao == "Região 1":
-                icone = "1️⃣"
+                icone = "🏪"
             elif regiao == "Região 2":
-                icone = "2️⃣"
+                icone = "🏭"
             elif regiao == "Região 3":
-                icone = "3️⃣"
-            elif regiao == "Não especificada":
-                icone = "❓"
+                icone = "🚚"
+            elif regiao == "Atacado/Diretoria":
+                icone = "🏢"
             
             # Calcular percentual
             total = contagem_regiao.sum()
@@ -428,9 +429,9 @@ if len(contagem_regiao) > 0:
                     box-shadow: 0 6px 15px rgba(0,0,0,0.2);
                     margin: 10px;
                     border: 3px solid {cor}cc;
-                    min-height: 160px;
+                    min-height: 170px;
                 ">
-                    <h2 style="margin: 0; font-size: 2.8rem; font-weight: bold; margin-bottom: 8px;">{icone}</h2>
+                    <h2 style="margin: 0; font-size: 3.0rem; font-weight: bold; margin-bottom: 5px;">{icone}</h2>
                     <h3 style="margin: 0; font-size: 1.4rem; font-weight: bold; margin-bottom: 5px;">{regiao}</h3>
                     <h1 style="margin: 0.5rem 0 0 0; font-size: 3.0rem; font-weight: bold;">{quantidade}</h1>
                     <p style="margin: 8px 0 0 0; font-size: 1.1rem; opacity: 0.9;">({percentual:.1f}%)</p>
@@ -457,7 +458,7 @@ with col_graf1:
             x='Quantidade',
             y='Região',
             orientation='h',
-            title='Distribuição por Região',
+            title='Distribuição por Região/Canal',
             color='Região',
             color_discrete_map=cores_regiao_map,
             text='Quantidade',
@@ -497,14 +498,14 @@ with col_graf2:
 # GRÁFICO COMPARATIVO: STATUS POR REGIÃO (EMPILHADO)
 # ============================================
 st.markdown("---")
-st.subheader("📊 Comparativo: Status por Região")
+st.subheader("📊 Comparativo: Status por Região/Canal")
 
 # Criar tabela pivô: Região x Status
 df_pivot_regiao = df_filtrado.groupby(['regiao_normalizada', 'status_normalizado']).size().reset_index(name='Quantidade')
 df_pivot_regiao.columns = ['Região', 'Status', 'Quantidade']
 
 # Ordenar regiões na ordem correta
-ordem_regioes = ['Região 1', 'Região 2', 'Região 3', 'Não especificada']
+ordem_regioes = ['Região 1', 'Região 2', 'Região 3', 'Atacado/Diretoria']
 df_pivot_regiao['Região'] = pd.Categorical(df_pivot_regiao['Região'], categories=ordem_regioes, ordered=True)
 df_pivot_regiao = df_pivot_regiao.sort_values('Região')
 
@@ -514,7 +515,7 @@ if len(df_pivot_regiao) > 0:
         x='Região',
         y='Quantidade',
         color='Status',
-        title='Distribuição de Status por Região',
+        title='Distribuição de Status por Região/Canal',
         barmode='stack',
         color_discrete_map=cores_status,
         text='Quantidade',
@@ -524,7 +525,7 @@ if len(df_pivot_regiao) > 0:
     fig_comparativo_regiao.update_layout(
         title_x=0.5,
         title_font_size=20,
-        xaxis_title='Região',
+        xaxis_title='Região/Canal',
         yaxis_title='Quantidade de Assistências',
         hovermode='x unified',
         legend_title_text='Status',
@@ -536,7 +537,7 @@ if len(df_pivot_regiao) > 0:
 # GRÁFICO DE MAPA DE CALOR: REGIÃO VS STATUS
 # ============================================
 st.markdown("---")
-st.subheader("🌡️ Mapa de Calor: Intensidade por Região e Status")
+st.subheader("🌡️ Mapa de Calor: Intensidade por Região/Canal e Status")
 
 df_heatmap = df_filtrado.pivot_table(
     index='regiao_normalizada',
@@ -555,13 +556,13 @@ if not df_heatmap.empty and df_heatmap.sum().sum() > 0:
         text_auto=True,
         aspect="auto",
         color_continuous_scale='Blues',
-        title='Mapa de Calor: Região x Status',
+        title='Mapa de Calor: Região/Canal x Status',
         height=400
     )
     fig_heatmap.update_layout(
         title_x=0.5,
         xaxis_title='Status',
-        yaxis_title='Região'
+        yaxis_title='Região/Canal'
     )
     st.plotly_chart(fig_heatmap, use_container_width=True)
 
@@ -570,7 +571,7 @@ if not df_heatmap.empty and df_heatmap.sum().sum() > 0:
 # ============================================
 if col_data and 'data_convertida' in df_filtrado.columns and len(df_filtrado) > 0:
     st.markdown("---")
-    st.subheader("📅 Evolução Temporal por Região")
+    st.subheader("📅 Evolução Temporal por Região/Canal")
     
     df_temporal = df_filtrado.copy()
     df_temporal['data_apenas'] = df_temporal['data_convertida'].dt.date
@@ -578,29 +579,26 @@ if col_data and 'data_convertida' in df_filtrado.columns and len(df_filtrado) > 
     df_evolucao_regiao = df_temporal.groupby(['data_apenas', 'regiao_normalizada']).size().reset_index(name='count')
     
     if not df_evolucao_regiao.empty and len(df_evolucao_regiao) > 5:
-        # Filtrar apenas regiões 1, 2, 3 para o gráfico temporal
-        df_evolucao_regiao = df_evolucao_regiao[df_evolucao_regiao['regiao_normalizada'].isin(['Região 1', 'Região 2', 'Região 3'])]
-        
-        if not df_evolucao_regiao.empty:
-            fig_temporal_regiao = px.line(
-                df_evolucao_regiao,
-                x='data_apenas',
-                y='count',
-                color='regiao_normalizada',
-                title='Evolução das Assistências por Região',
-                labels={'data_apenas': 'Data', 'count': 'Quantidade', 'regiao_normalizada': 'Região'},
-                color_discrete_map=cores_regiao_map,
-                markers=True,
-                line_shape='spline',
-                height=400
-            )
-            fig_temporal_regiao.update_layout(
-                title_x=0.5,
-                xaxis_title='Data',
-                yaxis_title='Quantidade de Assistências',
-                hovermode='x unified'
-            )
-            st.plotly_chart(fig_temporal_regiao, use_container_width=True)
+        # Manter todas as regiões incluindo Atacado/Diretoria
+        fig_temporal_regiao = px.line(
+            df_evolucao_regiao,
+            x='data_apenas',
+            y='count',
+            color='regiao_normalizada',
+            title='Evolução das Assistências por Região/Canal',
+            labels={'data_apenas': 'Data', 'count': 'Quantidade', 'regiao_normalizada': 'Região/Canal'},
+            color_discrete_map=cores_regiao_map,
+            markers=True,
+            line_shape='spline',
+            height=400
+        )
+        fig_temporal_regiao.update_layout(
+            title_x=0.5,
+            xaxis_title='Data',
+            yaxis_title='Quantidade de Assistências',
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig_temporal_regiao, use_container_width=True)
 
 # ============================================
 # TABELA DE DADOS
@@ -615,7 +613,7 @@ for col in df_filtrado.columns:
         'status', 'departamento', 'setor', 'data', 'cliente', 'produto', 'defeito', 
         'tecnico', 'observacao', 'observação', 'modelo', 'serie', 'número', 'telefone',
         'endereço', 'endereco', 'contato', 'razao', 'social', 'empresa', 'cliente',
-        'regiao', 'região', 'regional'
+        'regiao', 'região', 'regional', 'canal', 'venda', 'atacado', 'diretoria'
     ]):
         colunas_relevantes.append(col)
 
@@ -661,7 +659,7 @@ def destacar_regiao(val):
             'Região 1': '#e3f2fd',
             'Região 2': '#e8f5e9',
             'Região 3': '#ffebee',
-            'Não especificada': '#f5f5f5'
+            'Atacado/Diretoria': '#f3e5f5'
         }
         return f'background-color: {cores_suaves.get(val, "#ffffff")}; font-weight: bold;'
     return ''
@@ -721,8 +719,18 @@ else:
 
 st.sidebar.info(f"""
 📊 **Resumo dos Filtros:**
-- Regiões: {', '.join(regioes_selecionadas) if regioes_selecionadas else 'Nenhuma'}
+- Regiões/Canais: {', '.join(regioes_selecionadas) if regioes_selecionadas else 'Nenhuma'}
 - Status: {len(status_selecionados)} selecionados
 - {"Departamento: " + str(len(dept_selecionados)) + " selecionados" if col_departamento and dept_selecionados else "Sem filtro de departamento"}
 - Período: {periodo_texto}
+""")
+
+# ============================================
+# NOTA CONTEXTUAL (opcional)
+# ============================================
+st.sidebar.markdown("---")
+st.sidebar.caption("""
+💡 **Nota:** 
+• Regiões 1, 2 e 3 representam canais de varejo/produção
+• "Atacado/Diretoria" inclui vendas diretas, corporativas e demandas da diretoria
 """)
