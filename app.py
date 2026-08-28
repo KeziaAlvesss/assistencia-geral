@@ -32,7 +32,7 @@ uploaded_file = st.sidebar.file_uploader(
 
 if uploaded_file is None:
     st.info("""
-    ### 📥 Como usar este dashboard:
+    ###  Como usar este dashboard:
     
     1. **Abra sua planilha no Google Sheets**
     2. Clique em **Arquivo → Baixar**
@@ -47,11 +47,11 @@ if uploaded_file is None:
     st.stop()
 
 # ============================================
-# CARREGAR DADOS
+# CARREGAR DADOS - AJUSTADO PARA SUA PLANILHA
 # ============================================
 @st.cache_data(ttl=15, show_spinner=False)
 def carregar_dados(file):
-    """Carrega dados do arquivo uploadado com tratamento de erro robusto"""
+    """Carrega dados do arquivo com tratamento para múltiplos cabeçalhos"""
     try:
         if file.name.endswith('.csv'):
             for encoding in ['utf-8', 'latin1', 'iso-8859-1']:
@@ -61,12 +61,31 @@ def carregar_dados(file):
                 except:
                     continue
         else:
-            df = pd.read_excel(file)
+            # Para Excel, tentar identificar e pular linhas de título
+            df_temp = pd.read_excel(file, nrows=20)  # Ler primeiras 20 linhas para análise
+            
+            # Encontrar a linha que contém os cabeçalhos reais
+            # Procurar por colunas como "Razão Social", "Status", "Região", etc.
+            header_row = 0
+            for idx in range(min(10, len(df_temp))):  # Verificar até 10 primeiras linhas
+                row_values = df_temp.iloc[idx].astype(str).str.lower()
+                if any(k in ' '.join(row_values) for k in ['razão social', 'status', 'região', 'departamento', 'produto']):
+                    header_row = idx
+                    break
+            
+            # Carregar o arquivo pulando as linhas de título
+            df = pd.read_excel(file, skiprows=header_row)
         
+        # Remover colunas totalmente vazias
         df = df.dropna(axis=1, how='all')
+        
+        # Remover linhas onde todas as colunas são vazias ou "CONTROLE DE ASSISTÊNCIA TÉCNICA"
+        df = df[~df.astype(str).apply(lambda x: x.str.contains('CONTROLE DE ASSISTÊNCIA TÉCNICA', na=False).any(), axis=1)]
+        df = df.dropna(axis=0, how='all')
+        
         return df, time.time()
     except Exception as e:
-        st.error(f"❌ Erro ao carregar arquivo: {e}")
+        st.error(f" Erro ao carregar arquivo: {e}")
         return None, None
 
 df, timestamp_atualizacao = carregar_dados(uploaded_file)
@@ -74,6 +93,12 @@ df, timestamp_atualizacao = carregar_dados(uploaded_file)
 if df is None or df.empty:
     st.error("❌ Não foi possível carregar os dados da planilha.")
     st.stop()
+
+# Debug: Mostrar colunas encontradas
+with st.expander("🔍 Ver colunas disponíveis"):
+    st.write("Colunas encontradas:", list(df.columns))
+    st.write("Primeiras linhas:")
+    st.dataframe(df.head())
 
 # ============================================
 # IDENTIFICAR COLUNAS IMPORTANTES
@@ -395,7 +420,7 @@ else:
 # MÉTRICAS POR REGIÃO/CANAL (REGIÃO 1/2/3 + ATACADO/DIRETORIA)
 # ============================================
 st.markdown("---")
-st.subheader("🌍 Análise por Região/Canal")
+st.subheader(" Análise por Região/Canal")
 
 contagem_regiao = df_filtrado['regiao_normalizada'].value_counts().reindex(todas_regioes, fill_value=0)
 
@@ -604,7 +629,7 @@ if col_data and 'data_convertida' in df_filtrado.columns and len(df_filtrado) > 
 # TABELA DE DADOS
 # ============================================
 st.markdown("---")
-st.subheader(f"📝 Dados Detalhados ({len(df_filtrado):,} registros)")
+st.subheader(f" Dados Detalhados ({len(df_filtrado):,} registros)")
 
 colunas_relevantes = []
 for col in df_filtrado.columns:
@@ -677,7 +702,7 @@ else:
 # DOWNLOAD DOS DADOS
 # ============================================
 st.markdown("---")
-st.subheader("💾 Exportar Dados")
+st.subheader(" Exportar Dados")
 
 csv = df_filtrado.to_csv(index=False).encode('utf-8-sig')
 st.download_button(
@@ -692,7 +717,7 @@ st.download_button(
 # ATUALIZAÇÃO AUTOMÁTICA
 # ============================================
 st.markdown("---")
-st.caption(f"🔄 Atualização automática a cada 15 segundos | Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+st.caption(f" Atualização automática a cada 15 segundos | Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
 st.components.v1.html(
     """
@@ -730,7 +755,7 @@ st.sidebar.info(f"""
 # ============================================
 st.sidebar.markdown("---")
 st.sidebar.caption("""
-💡 **Nota:** 
+ **Nota:** 
 • Regiões 1, 2 e 3 representam canais de varejo/produção
 • "Atacado/Diretoria" inclui vendas diretas, corporativas e demandas da diretoria
 """)
