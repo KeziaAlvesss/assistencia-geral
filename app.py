@@ -700,10 +700,11 @@ def destacar_regiao(val):
     return ''
 
 # Aplicar estilos
+# Observação: Styler.applymap foi removido no pandas 3.x; o substituto é Styler.map.
 if col_status in df_exibir.columns:
-    df_estilo = df_exibir.style.applymap(destacar_status, subset=[col_status])
+    df_estilo = df_exibir.style.map(destacar_status, subset=[col_status])
     if col_regiao and col_regiao in df_exibir.columns:
-        df_estilo = df_estilo.applymap(destacar_regiao, subset=[col_regiao])
+        df_estilo = df_estilo.map(destacar_regiao, subset=[col_regiao])
     st.dataframe(df_estilo, use_container_width=True, height=400)
 else:
     st.dataframe(df_exibir, use_container_width=True, height=400)
