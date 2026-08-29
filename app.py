@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import time
 import plotly.express as px
+import plotly.io as pio
 
 # ============================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -15,9 +16,181 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("🔧 Dashboard de Assistência Técnica")
-st.markdown("**Acompanhamento em tempo real das assistências por Região**")
-st.markdown("---")
+# ============================================
+# TEMA VISUAL GLOBAL (estilo BI corporativo)
+# ============================================
+pio.templates.default = "plotly_white"
+
+FONTE = "'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif"
+
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+html, body, [class*="css"] {{
+    font-family: {FONTE};
+}}
+
+/* Fundo geral da área de conteúdo */
+[data-testid="stAppViewContainer"] > .main {{
+    background: linear-gradient(180deg, #F3F5FA 0%, #EDF0F7 100%);
+}}
+
+/* Ajustar respiro do topo */
+.block-container {{
+    padding-top: 1.2rem;
+    padding-bottom: 3rem;
+    max-width: 1500px;
+}}
+
+/* ===== SIDEBAR ESTILO BI (painel escuro) ===== */
+[data-testid="stSidebar"] {{
+    background: linear-gradient(180deg, #121A2E 0%, #1B2748 100%);
+}}
+[data-testid="stSidebar"] * {{
+    color: #E7EAF3 !important;
+}}
+[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {{
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+}}
+[data-testid="stSidebar"] hr {{
+    border-color: rgba(255,255,255,0.12) !important;
+}}
+[data-testid="stSidebar"] .stCheckbox, [data-testid="stSidebar"] .stTextInput,
+[data-testid="stSidebar"] .stMultiSelect, [data-testid="stSidebar"] .stRadio,
+[data-testid="stSidebar"] .stDateInput {{
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 4px 8px;
+    margin-bottom: 2px;
+}}
+[data-testid="stSidebar"] [data-baseweb="tag"] {{
+    background-color: #F2C811 !important;
+    color: #1B2748 !important;
+    font-weight: 600;
+}}
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
+    background: rgba(255,255,255,0.05);
+    border: 1.5px dashed rgba(255,255,255,0.25);
+    border-radius: 12px;
+}}
+
+/* ===== TÍTULOS DE SEÇÃO ===== */
+h2, h3 {{
+    font-weight: 700 !important;
+    color: #1B2340 !important;
+}}
+div[data-testid="stMarkdownContainer"] h3 {{
+    font-size: 1.25rem !important;
+    padding-left: 12px;
+    border-left: 5px solid #F2C811;
+    margin: 0.4rem 0 1rem 0 !important;
+}}
+
+/* ===== LINHAS DIVISÓRIAS MAIS SUAVES ===== */
+hr {{
+    margin: 2.2rem 0 1.6rem 0 !important;
+    border-color: rgba(27,35,64,0.08) !important;
+}}
+
+/* ===== TILES (containers com borda ao redor de gráficos/tabelas) ===== */
+[data-testid="stVerticalBlockBorderWrapper"] {{
+    background: #FFFFFF;
+    border-radius: 16px !important;
+    border: 1px solid rgba(27,35,64,0.06) !important;
+    box-shadow: 0 4px 18px rgba(20, 30, 60, 0.06);
+    padding: 0.4rem 0.6rem 0.2rem 0.6rem;
+    transition: box-shadow 0.2s ease;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:hover {{
+    box-shadow: 0 8px 26px rgba(20, 30, 60, 0.10);
+}}
+
+/* ===== MULTISELECT (tags coluna tabela) ===== */
+[data-baseweb="tag"] {{
+    background-color: #2563EB !important;
+    border-radius: 8px !important;
+}}
+
+/* ===== BOTÃO DE DOWNLOAD ===== */
+.stDownloadButton button {{
+    background: linear-gradient(135deg, #2563EB, #1B2748) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    padding: 0.6rem 1.2rem !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.28);
+}}
+.stDownloadButton button:hover {{
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4);
+    transform: translateY(-1px);
+}}
+
+/* ===== TABELA / DATAFRAME ===== */
+[data-testid="stDataFrame"] {{
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(27,35,64,0.08);
+}}
+
+/* ===== EXPANDER ===== */
+details {{
+    background: #FFFFFF;
+    border-radius: 12px !important;
+    border: 1px solid rgba(27,35,64,0.08) !important;
+    box-shadow: 0 2px 10px rgba(20,30,60,0.04);
+}}
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================
+# CABEÇALHO / BANNER PRINCIPAL
+# ============================================
+st.markdown(f"""
+<div style="
+    background: linear-gradient(120deg, #121A2E 0%, #1B2748 55%, #223267 100%);
+    border-radius: 20px;
+    padding: 1.8rem 2.2rem;
+    margin-bottom: 1.8rem;
+    box-shadow: 0 10px 30px rgba(18, 26, 46, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+">
+    <div style="display:flex; align-items:center; gap:1rem;">
+        <div style="
+            width: 56px; height: 56px; border-radius: 14px;
+            background: linear-gradient(135deg, #F2C811, #F5D65B);
+            display:flex; align-items:center; justify-content:center;
+            font-size: 1.8rem; box-shadow: 0 6px 16px rgba(242,200,17,0.35);
+        ">🔧</div>
+        <div>
+            <h1 style="margin:0; color:#FFFFFF; font-size:1.75rem; font-weight:800; letter-spacing:-0.3px;">
+                Dashboard de Assistência Técnica
+            </h1>
+            <p style="margin:0.2rem 0 0 0; color:#B9C2DB; font-size:0.95rem; font-weight:400;">
+                Acompanhamento em tempo real das assistências por Região
+            </p>
+        </div>
+    </div>
+    <div style="
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 12px;
+        padding: 0.5rem 1rem;
+        color: #E7EAF3;
+        font-size: 0.85rem;
+        text-align: right;
+    ">
+        🔄 Atualização automática a cada 15s<br>
+        <span style="color:#F2C811; font-weight:600;">{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ============================================
 # UPLOAD DO ARQUIVO
@@ -395,6 +568,7 @@ cores_status = {
 if len(contagem_status) > 0:
     num_status = len(contagem_status)
     cols_por_linha = min(6, num_status)
+    total_status_geral = contagem_status.sum()
 
     for i in range(0, num_status, cols_por_linha):
         cols = st.columns(cols_por_linha)
@@ -406,19 +580,32 @@ if len(contagem_status) > 0:
                         cor = valor
                         break
 
+                pct = (quantidade / total_status_geral * 100) if total_status_geral > 0 else 0
+
                 st.markdown(f"""
                     <div style="
-                        background: linear-gradient(145deg, {cor}99, {cor});
-                        color: white;
-                        padding: 1.2rem;
-                        border-radius: 12px;
-                        text-align: center;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                        margin: 8px;
-                        border: 2px solid {cor}cc;
+                        background: #FFFFFF;
+                        padding: 1.1rem 1.2rem 1rem 1.2rem;
+                        border-radius: 14px;
+                        box-shadow: 0 3px 14px rgba(20,30,60,0.06);
+                        border: 1px solid rgba(27,35,64,0.06);
+                        border-top: 4px solid {cor};
+                        margin: 6px 0;
+                        min-height: 128px;
+                        position: relative;
+                        transition: transform 0.15s ease, box-shadow 0.15s ease;
                     ">
-                        <h3 style="margin: 0; font-size: 1.1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{status}</h3>
-                        <h1 style="margin: 0.6rem 0 0 0; font-size: 2.8rem; font-weight: bold;">{quantidade}</h1>
+                        <div style="
+                            width: 34px; height: 34px; border-radius: 9px;
+                            background: {cor}22; color: {cor};
+                            display:flex; align-items:center; justify-content:center;
+                            font-size: 1rem; font-weight: 800; margin-bottom: 0.6rem;
+                        ">●</div>
+                        <p style="margin:0; font-size:0.72rem; font-weight:700; letter-spacing:0.6px;
+                                  text-transform:uppercase; color:#8890A6;">{status}</p>
+                        <h1 style="margin:0.15rem 0 0 0; font-size:2.1rem; font-weight:800; color:#1B2340;
+                                   line-height:1;">{quantidade}</h1>
+                        <p style="margin:0.3rem 0 0 0; font-size:0.78rem; font-weight:600; color:{cor};">{pct:.1f}% do total</p>
                     </div>
                 """, unsafe_allow_html=True)
 else:
@@ -456,22 +643,58 @@ if len(contagem_regiao) > 0:
 
             st.markdown(f"""
                 <div style="
-                    background: linear-gradient(145deg, {cor}99, {cor});
-                    color: white;
-                    padding: 1.3rem;
-                    border-radius: 15px;
-                    text-align: center;
-                    box-shadow: 0 6px 15px rgba(0,0,0,0.2);
-                    margin: 10px;
-                    border: 3px solid {cor}cc;
-                    min-height: 170px;
+                    background: #FFFFFF;
+                    padding: 1.5rem 1.4rem 1.3rem 1.4rem;
+                    border-radius: 18px;
+                    box-shadow: 0 6px 20px rgba(20,30,60,0.08);
+                    border: 1px solid rgba(27,35,64,0.06);
+                    margin: 6px 0;
+                    min-height: 190px;
                 ">
-                    <h2 style="margin: 0; font-size: 3.0rem; font-weight: bold; margin-bottom: 5px;">{icone}</h2>
-                    <h3 style="margin: 0; font-size: 1.4rem; font-weight: bold; margin-bottom: 5px;">{regiao}</h3>
-                    <h1 style="margin: 0.5rem 0 0 0; font-size: 3.0rem; font-weight: bold;">{quantidade}</h1>
-                    <p style="margin: 8px 0 0 0; font-size: 1.1rem; opacity: 0.9;">({percentual:.1f}%)</p>
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <div style="
+                            width: 46px; height: 46px; border-radius: 12px;
+                            background: linear-gradient(135deg, {cor}, {cor}cc);
+                            display:flex; align-items:center; justify-content:center;
+                            font-size: 1.4rem; box-shadow: 0 4px 12px {cor}55;
+                        ">{icone}</div>
+                        <span style="
+                            background: {cor}18; color:{cor}; font-weight:700; font-size:0.78rem;
+                            padding: 0.25rem 0.6rem; border-radius: 999px;
+                        ">{percentual:.1f}%</span>
+                    </div>
+                    <p style="margin: 0.9rem 0 0.1rem 0; font-size:0.78rem; font-weight:700; letter-spacing:0.5px;
+                              text-transform:uppercase; color:#8890A6;">{regiao}</p>
+                    <h1 style="margin:0; font-size:2.4rem; font-weight:800; color:#1B2340; line-height:1.15;">{quantidade}</h1>
+                    <div style="
+                        width:100%; height:7px; background:{cor}18; border-radius:999px;
+                        margin-top:0.9rem; overflow:hidden;
+                    ">
+                        <div style="width:{percentual}%; height:100%; background:{cor}; border-radius:999px;"></div>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
+
+# ============================================
+# ESTILO PADRÃO PARA OS GRÁFICOS (visual de BI corporativo)
+# ============================================
+def estilizar_grafico(fig):
+    """Aplica uma aparência consistente, tipo Power BI, a qualquer figura Plotly."""
+    fig.update_layout(
+        title_x=0.01,
+        title_font=dict(size=17, family="Inter, Segoe UI, sans-serif", color="#1B2340"),
+        font=dict(family="Inter, Segoe UI, sans-serif", size=12.5, color="#4B5268"),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=55, b=10),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11.5)),
+        hoverlabel=dict(bgcolor="#1B2340", font_color="white", font_size=12,
+                         font_family="Inter, Segoe UI, sans-serif"),
+    )
+    fig.update_xaxes(showgrid=True, gridcolor="#EEF1F6", zeroline=False, linecolor="#E3E7F1")
+    fig.update_yaxes(showgrid=True, gridcolor="#EEF1F6", zeroline=False, linecolor="#E3E7F1")
+    return fig
+
 
 # ============================================
 # GRÁFICOS COM ANÁLISE POR REGIÃO
@@ -483,51 +706,51 @@ col_graf1, col_graf2 = st.columns(2)
 
 # Gráfico 1: Distribuição por Região (Barras horizontais)
 with col_graf1:
-    df_regiao = contagem_regiao.reset_index()
-    df_regiao.columns = ['Região', 'Quantidade']
-    df_regiao = df_regiao[df_regiao['Quantidade'] > 0]
+    with st.container(border=True):
+        df_regiao = contagem_regiao.reset_index()
+        df_regiao.columns = ['Região', 'Quantidade']
+        df_regiao = df_regiao[df_regiao['Quantidade'] > 0]
 
-    if not df_regiao.empty:
-        fig_regiao = px.bar(
-            df_regiao,
-            x='Quantidade',
-            y='Região',
-            orientation='h',
-            title='Distribuição por Região/Canal',
-            color='Região',
-            color_discrete_map=cores_regiao_map,
-            text='Quantidade',
-            height=350
-        )
-        fig_regiao.update_traces(textposition='outside', textfont_size=14)
-        fig_regiao.update_layout(
-            title_x=0.5,
-            xaxis_title='Quantidade de Assistências',
-            yaxis_title=None,
-            showlegend=False,
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
-        st.plotly_chart(fig_regiao, use_container_width=True)
+        if not df_regiao.empty:
+            fig_regiao = px.bar(
+                df_regiao,
+                x='Quantidade',
+                y='Região',
+                orientation='h',
+                title='Distribuição por Região/Canal',
+                color='Região',
+                color_discrete_map=cores_regiao_map,
+                text='Quantidade',
+                height=350
+            )
+            fig_regiao.update_traces(textposition='outside', textfont_size=13, marker_line_width=0,
+                                      texttemplate='%{text:,}')
+            fig_regiao.update_layout(xaxis_title='Quantidade de Assistências', yaxis_title=None, showlegend=False)
+            fig_regiao = estilizar_grafico(fig_regiao)
+            st.plotly_chart(fig_regiao, use_container_width=True)
 
 # Gráfico 2: Distribuição por Status
 with col_graf2:
-    if len(contagem_status) > 0:
-        df_grafico = contagem_status.reset_index()
-        df_grafico.columns = ['Status', 'Quantidade']
+    with st.container(border=True):
+        if len(contagem_status) > 0:
+            df_grafico = contagem_status.reset_index()
+            df_grafico.columns = ['Status', 'Quantidade']
 
-        fig_pizza = px.pie(
-            df_grafico,
-            values='Quantidade',
-            names='Status',
-            title='Distribuição por Status',
-            color='Status',
-            color_discrete_map=cores_status,
-            hole=0.4,
-            height=350
-        )
-        fig_pizza.update_traces(textposition='inside', textinfo='percent+label', textfont_size=12)
-        fig_pizza.update_layout(title_x=0.5, showlegend=False)
-        st.plotly_chart(fig_pizza, use_container_width=True)
+            fig_pizza = px.pie(
+                df_grafico,
+                values='Quantidade',
+                names='Status',
+                title='Distribuição por Status',
+                color='Status',
+                color_discrete_map=cores_status,
+                hole=0.55,
+                height=350
+            )
+            fig_pizza.update_traces(textposition='inside', textinfo='percent+label', textfont_size=11.5,
+                                     marker=dict(line=dict(color='#FFFFFF', width=2)))
+            fig_pizza.update_layout(showlegend=False)
+            fig_pizza = estilizar_grafico(fig_pizza)
+            st.plotly_chart(fig_pizza, use_container_width=True)
 
 # ============================================
 # GRÁFICO COMPARATIVO: STATUS POR REGIÃO (EMPILHADO)
@@ -545,28 +768,28 @@ df_pivot_regiao['Região'] = pd.Categorical(df_pivot_regiao['Região'], categori
 df_pivot_regiao = df_pivot_regiao.sort_values('Região')
 
 if len(df_pivot_regiao) > 0:
-    fig_comparativo_regiao = px.bar(
-        df_pivot_regiao,
-        x='Região',
-        y='Quantidade',
-        color='Status',
-        title='Distribuição de Status por Região/Canal',
-        barmode='stack',
-        color_discrete_map=cores_status,
-        text='Quantidade',
-        height=450
-    )
-    fig_comparativo_regiao.update_traces(textposition='inside', textfont_size=11)
-    fig_comparativo_regiao.update_layout(
-        title_x=0.5,
-        title_font_size=20,
-        xaxis_title='Região/Canal',
-        yaxis_title='Quantidade de Assistências',
-        hovermode='x unified',
-        legend_title_text='Status',
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    st.plotly_chart(fig_comparativo_regiao, use_container_width=True)
+    with st.container(border=True):
+        fig_comparativo_regiao = px.bar(
+            df_pivot_regiao,
+            x='Região',
+            y='Quantidade',
+            color='Status',
+            title='Distribuição de Status por Região/Canal',
+            barmode='stack',
+            color_discrete_map=cores_status,
+            text='Quantidade',
+            height=430
+        )
+        fig_comparativo_regiao.update_traces(textposition='inside', textfont_size=11, marker_line_width=0)
+        fig_comparativo_regiao.update_layout(
+            xaxis_title='Região/Canal',
+            yaxis_title='Quantidade de Assistências',
+            hovermode='x unified',
+            legend_title_text='Status',
+            legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1)
+        )
+        fig_comparativo_regiao = estilizar_grafico(fig_comparativo_regiao)
+        st.plotly_chart(fig_comparativo_regiao, use_container_width=True)
 
 # ============================================
 # GRÁFICO DE MAPA DE CALOR: REGIÃO VS STATUS
@@ -586,20 +809,19 @@ df_heatmap = df_heatmap.reindex(ordem_regioes, fill_value=0)
 df_heatmap = df_heatmap.loc[:, (df_heatmap != 0).any(axis=0)]  # Remover colunas zeradas
 
 if not df_heatmap.empty and df_heatmap.sum().sum() > 0:
-    fig_heatmap = px.imshow(
-        df_heatmap,
-        text_auto=True,
-        aspect="auto",
-        color_continuous_scale='Blues',
-        title='Mapa de Calor: Região/Canal x Status',
-        height=400
-    )
-    fig_heatmap.update_layout(
-        title_x=0.5,
-        xaxis_title='Status',
-        yaxis_title='Região/Canal'
-    )
-    st.plotly_chart(fig_heatmap, use_container_width=True)
+    with st.container(border=True):
+        fig_heatmap = px.imshow(
+            df_heatmap,
+            text_auto=True,
+            aspect="auto",
+            color_continuous_scale=[[0, '#F3F5FA'], [1, '#2563EB']],
+            title='Mapa de Calor: Região/Canal x Status',
+            height=380
+        )
+        fig_heatmap.update_layout(xaxis_title='Status', yaxis_title='Região/Canal')
+        fig_heatmap.update_traces(textfont_size=13)
+        fig_heatmap = estilizar_grafico(fig_heatmap)
+        st.plotly_chart(fig_heatmap, use_container_width=True)
 
 # ============================================
 # GRÁFICO TEMPORAL POR REGIÃO (se houver data)
@@ -614,26 +836,30 @@ if col_data and 'data_convertida' in df_filtrado.columns and len(df_filtrado) > 
     df_evolucao_regiao = df_temporal.groupby(['data_apenas', 'regiao_normalizada']).size().reset_index(name='count')
 
     if not df_evolucao_regiao.empty and len(df_evolucao_regiao) > 5:
-        # Manter todas as regiões incluindo Atacado/Diretoria
-        fig_temporal_regiao = px.line(
-            df_evolucao_regiao,
-            x='data_apenas',
-            y='count',
-            color='regiao_normalizada',
-            title='Evolução das Assistências por Região/Canal',
-            labels={'data_apenas': 'Data', 'count': 'Quantidade', 'regiao_normalizada': 'Região/Canal'},
-            color_discrete_map=cores_regiao_map,
-            markers=True,
-            line_shape='spline',
-            height=400
-        )
-        fig_temporal_regiao.update_layout(
-            title_x=0.5,
-            xaxis_title='Data',
-            yaxis_title='Quantidade de Assistências',
-            hovermode='x unified'
-        )
-        st.plotly_chart(fig_temporal_regiao, use_container_width=True)
+        with st.container(border=True):
+            # Manter todas as regiões incluindo Atacado/Diretoria
+            fig_temporal_regiao = px.line(
+                df_evolucao_regiao,
+                x='data_apenas',
+                y='count',
+                color='regiao_normalizada',
+                title='Evolução das Assistências por Região/Canal',
+                labels={'data_apenas': 'Data', 'count': 'Quantidade', 'regiao_normalizada': 'Região/Canal'},
+                color_discrete_map=cores_regiao_map,
+                markers=True,
+                line_shape='spline',
+                height=380
+            )
+            fig_temporal_regiao.update_traces(line=dict(width=3), marker=dict(size=6))
+            fig_temporal_regiao.update_layout(
+                xaxis_title='Data',
+                yaxis_title='Quantidade de Assistências',
+                hovermode='x unified',
+                legend_title_text='Região/Canal',
+                legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1)
+            )
+            fig_temporal_regiao = estilizar_grafico(fig_temporal_regiao)
+            st.plotly_chart(fig_temporal_regiao, use_container_width=True)
 
 # ============================================
 # TABELA DE DADOS
@@ -663,51 +889,52 @@ if col_regiao and col_regiao in colunas_exibir:
 if col_status and col_status in colunas_exibir:
     colunas_default = [col_status] + [c for c in colunas_default if c != col_status]
 
-colunas_selecionadas = st.multiselect(
-    "Selecione as colunas para exibir:",
-    options=colunas_exibir,
-    default=colunas_default[:8],
-    help="Escolha as colunas mais importantes para sua análise"
-)
+with st.container(border=True):
+    colunas_selecionadas = st.multiselect(
+        "Selecione as colunas para exibir:",
+        options=colunas_exibir,
+        default=colunas_default[:8],
+        help="Escolha as colunas mais importantes para sua análise"
+    )
 
-if colunas_selecionadas:
-    df_exibir = df_filtrado[colunas_selecionadas].copy()
-else:
-    df_exibir = df_filtrado[colunas_exibir[:8]].copy()
+    if colunas_selecionadas:
+        df_exibir = df_filtrado[colunas_selecionadas].copy()
+    else:
+        df_exibir = df_filtrado[colunas_exibir[:8]].copy()
 
-# Estilo condicional para status
-def destacar_status(val):
-    if isinstance(val, str):
-        val_stripped = val.strip()
-        cor = '#95a5a6'
-        for chave, valor in cores_status.items():
-            if chave.lower() in val_stripped.lower() or val_stripped.lower() in chave.lower():
-                cor = valor
-                break
-        return f'background-color: {cor}; color: white; font-weight: bold;'
-    return ''
+    # Estilo condicional para status
+    def destacar_status(val):
+        if isinstance(val, str):
+            val_stripped = val.strip()
+            cor = '#95a5a6'
+            for chave, valor in cores_status.items():
+                if chave.lower() in val_stripped.lower() or val_stripped.lower() in chave.lower():
+                    cor = valor
+                    break
+            return f'background-color: {cor}; color: white; font-weight: bold;'
+        return ''
 
-# Estilo condicional para região (cores suaves)
-def destacar_regiao(val):
-    if isinstance(val, str):
-        cores_suaves = {
-            'Região 1': '#e3f2fd',
-            'Região 2': '#e8f5e9',
-            'Região 3': '#ffebee',
-            'Atacado/Diretoria': '#f3e5f5'
-        }
-        return f'background-color: {cores_suaves.get(val, "#ffffff")}; font-weight: bold;'
-    return ''
+    # Estilo condicional para região (cores suaves)
+    def destacar_regiao(val):
+        if isinstance(val, str):
+            cores_suaves = {
+                'Região 1': '#e3f2fd',
+                'Região 2': '#e8f5e9',
+                'Região 3': '#ffebee',
+                'Atacado/Diretoria': '#f3e5f5'
+            }
+            return f'background-color: {cores_suaves.get(val, "#ffffff")}; font-weight: bold;'
+        return ''
 
-# Aplicar estilos
-# Observação: Styler.applymap foi removido no pandas 3.x; o substituto é Styler.map.
-if col_status in df_exibir.columns:
-    df_estilo = df_exibir.style.map(destacar_status, subset=[col_status])
-    if col_regiao and col_regiao in df_exibir.columns:
-        df_estilo = df_estilo.map(destacar_regiao, subset=[col_regiao])
-    st.dataframe(df_estilo, use_container_width=True, height=400)
-else:
-    st.dataframe(df_exibir, use_container_width=True, height=400)
+    # Aplicar estilos
+    # Observação: Styler.applymap foi removido no pandas 3.x; o substituto é Styler.map.
+    if col_status in df_exibir.columns:
+        df_estilo = df_exibir.style.map(destacar_status, subset=[col_status])
+        if col_regiao and col_regiao in df_exibir.columns:
+            df_estilo = df_estilo.map(destacar_regiao, subset=[col_regiao])
+        st.dataframe(df_estilo, use_container_width=True, height=400)
+    else:
+        st.dataframe(df_exibir, use_container_width=True, height=400)
 
 # ============================================
 # DOWNLOAD DOS DADOS
