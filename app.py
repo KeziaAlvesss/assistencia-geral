@@ -58,31 +58,39 @@ def carregar_dados(file):
                 try:
                     df = pd.read_csv(file, encoding=encoding)
                     break
-                except:
+                except Exception:
                     continue
         else:
-            # Para Excel, tentar identificar e pular linhas de título
-            df_temp = pd.read_excel(file, nrows=20)  # Ler primeiras 20 linhas para análise
-            
+            # Para Excel, tentar identificar e pular linhas de título.
+            # Lemos SEM header (header=None) para que o índice de cada
+            # linha em df_temp corresponda exatamente à linha real da planilha.
+            df_temp = pd.read_excel(file, header=None, nrows=20)
+
             # Encontrar a linha que contém os cabeçalhos reais
             # Procurar por colunas como "Razão Social", "Status", "Região", etc.
             header_row = 0
-            for idx in range(min(10, len(df_temp))):  # Verificar até 10 primeiras linhas
-                row_values = df_temp.iloc[idx].astype(str).str.lower()
-                if any(k in ' '.join(row_values) for k in ['razão social', 'status', 'região', 'departamento', 'produto']):
+            for idx in range(min(15, len(df_temp))):
+                # fillna('') antes do astype(str) é essencial: no pandas 3.x,
+                # células totalmente vazias (NaN) podem continuar sendo float
+                # mesmo depois do astype(str), o que quebra o ' '.join() abaixo.
+                row_values = df_temp.iloc[idx].fillna('').astype(str).str.lower()
+                linha_concatenada = ' '.join(row_values.tolist())
+                if any(k in linha_concatenada for k in ['razão social', 'status', 'região', 'departamento', 'produto']):
                     header_row = idx
                     break
-            
-            # Carregar o arquivo pulando as linhas de título
-            df = pd.read_excel(file, skiprows=header_row)
-        
+
+            # Carregar o arquivo usando a linha encontrada como cabeçalho.
+            # Usar header=header_row (e não skiprows) evita erro de contagem,
+            # já que df_temp foi lido com header=None (sem deslocamento de índice).
+            df = pd.read_excel(file, header=header_row)
+
         # Remover colunas totalmente vazias
         df = df.dropna(axis=1, how='all')
-        
+
         # Remover linhas onde todas as colunas são vazias ou "CONTROLE DE ASSISTÊNCIA TÉCNICA"
         df = df[~df.astype(str).apply(lambda x: x.str.contains('CONTROLE DE ASSISTÊNCIA TÉCNICA', na=False).any(), axis=1)]
         df = df.dropna(axis=0, how='all')
-        
+
         return df, time.time()
     except Exception as e:
         st.error(f" Erro ao carregar arquivo: {e}")
@@ -153,11 +161,11 @@ if col_regiao:
     df['regiao_normalizada'] = df[col_regiao].fillna('Atacado/Diretoria').astype(str).str.strip()
     # Padronizar valores para as regiões conhecidas
     df['regiao_normalizada'] = df['regiao_normalizada'].str.lower()
-    
+
     # Mapeamento inteligente para padronizar diferentes formas de escrita
     def padronizar_regiao(valor):
         valor_lower = valor.lower().strip()
-        
+
         # Região 1
         if any(k in valor_lower for k in ['regiao 1', 'região 1', 'reg1', 'r1', 'reg 1', 'região1', 'regiao1']):
             return 'Região 1'
@@ -173,7 +181,7 @@ if col_regiao:
         else:
             # Manter o valor original mas capitalizado
             return valor.title() if valor else 'Atacado/Diretoria'
-    
+
     df['regiao_normalizada'] = df['regiao_normalizada'].apply(padronizar_regiao)
 else:
     df['regiao_normalizada'] = 'Todas'
@@ -266,7 +274,7 @@ else:
 # ============================================
 if col_data:
     st.sidebar.subheader("📅 Período")
-    
+
     # Opção para alternar entre período completo e personalizado
     periodo_opcao = st.sidebar.radio(
         "Tipo de período",
@@ -274,17 +282,17 @@ if col_data:
         horizontal=True,
         key="periodo_tipo"
     )
-    
+
     if periodo_opcao == "Personalizar intervalo":
         # Obter datas mínima e máxima dos dados para limitar o seletor
         try:
             datas_validas = pd.to_datetime(df[col_data], errors='coerce', dayfirst=True).dropna()
             data_min = datas_validas.min().date() if not datas_validas.empty else (datetime.now().date() - timedelta(days=365))
             data_max = datas_validas.max().date() if not datas_validas.empty else datetime.now().date()
-        except:
+        except Exception:
             data_min = datetime.now().date() - timedelta(days=365)
             data_max = datetime.now().date()
-        
+
         col_start, col_end = st.sidebar.columns(2)
         with col_start:
             data_inicio = st.date_input(
@@ -302,7 +310,7 @@ if col_data:
                 max_value=data_max,
                 key="data_fim"
             )
-        
+
         # Validação do intervalo
         if data_inicio > data_fim:
             st.sidebar.error("⚠️ Data inicial não pode ser maior que a data final!")
@@ -339,19 +347,19 @@ if col_data and periodo_opcao == "Personalizar intervalo" and data_inicio and da
     try:
         # Converter coluna de data apenas para o DataFrame filtrado atual
         df_filtrado['data_convertida'] = pd.to_datetime(
-            df_filtrado[col_data], 
+            df_filtrado[col_data],
             errors='coerce',
             dayfirst=True
         )
         df_filtrado = df_filtrado.dropna(subset=['data_convertida'])
-        
+
         # Definir intervalo com precisão de dia inteiro
         start_datetime = pd.Timestamp(data_inicio)
         end_datetime = pd.Timestamp(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-        
+
         # Aplicar filtro
         df_filtrado = df_filtrado[
-            (df_filtrado['data_convertida'] >= start_datetime) & 
+            (df_filtrado['data_convertida'] >= start_datetime) &
             (df_filtrado['data_convertida'] <= end_datetime)
         ]
     except Exception as e:
@@ -360,7 +368,7 @@ if col_data and periodo_opcao == "Personalizar intervalo" and data_inicio and da
 if busca:
     busca_lower = busca.lower()
     mask = df_filtrado.astype(str).apply(
-        lambda row: row.str.lower().str.contains(busca_lower, na=False).any(), 
+        lambda row: row.str.lower().str.contains(busca_lower, na=False).any(),
         axis=1
     )
     df_filtrado = df_filtrado[mask]
@@ -387,7 +395,7 @@ cores_status = {
 if len(contagem_status) > 0:
     num_status = len(contagem_status)
     cols_por_linha = min(6, num_status)
-    
+
     for i in range(0, num_status, cols_por_linha):
         cols = st.columns(cols_por_linha)
         for j, (status, quantidade) in enumerate(contagem_status.iloc[i:i+cols_por_linha].items()):
@@ -397,7 +405,7 @@ if len(contagem_status) > 0:
                     if chave.lower() in status.lower() or status.lower() in chave.lower():
                         cor = valor
                         break
-                
+
                 st.markdown(f"""
                     <div style="
                         background: linear-gradient(145deg, {cor}99, {cor});
@@ -426,7 +434,7 @@ contagem_regiao = df_filtrado['regiao_normalizada'].value_counts().reindex(todas
 
 if len(contagem_regiao) > 0:
     cols = st.columns(len(todas_regioes))
-    
+
     for idx, (regiao, quantidade) in enumerate(contagem_regiao.items()):
         with cols[idx]:
             cor = cores_regiao_map.get(regiao, '#95a5a6')
@@ -439,11 +447,13 @@ if len(contagem_regiao) > 0:
                 icone = "🚚"
             elif regiao == "Atacado/Diretoria":
                 icone = "🏢"
-            
+            else:
+                icone = "📍"
+
             # Calcular percentual
             total = contagem_regiao.sum()
             percentual = (quantidade / total * 100) if total > 0 else 0
-            
+
             st.markdown(f"""
                 <div style="
                     background: linear-gradient(145deg, {cor}99, {cor});
@@ -476,7 +486,7 @@ with col_graf1:
     df_regiao = contagem_regiao.reset_index()
     df_regiao.columns = ['Região', 'Quantidade']
     df_regiao = df_regiao[df_regiao['Quantidade'] > 0]
-    
+
     if not df_regiao.empty:
         fig_regiao = px.bar(
             df_regiao,
@@ -504,7 +514,7 @@ with col_graf2:
     if len(contagem_status) > 0:
         df_grafico = contagem_status.reset_index()
         df_grafico.columns = ['Status', 'Quantidade']
-        
+
         fig_pizza = px.pie(
             df_grafico,
             values='Quantidade',
@@ -597,12 +607,12 @@ if not df_heatmap.empty and df_heatmap.sum().sum() > 0:
 if col_data and 'data_convertida' in df_filtrado.columns and len(df_filtrado) > 0:
     st.markdown("---")
     st.subheader("📅 Evolução Temporal por Região/Canal")
-    
+
     df_temporal = df_filtrado.copy()
     df_temporal['data_apenas'] = df_temporal['data_convertida'].dt.date
-    
+
     df_evolucao_regiao = df_temporal.groupby(['data_apenas', 'regiao_normalizada']).size().reset_index(name='count')
-    
+
     if not df_evolucao_regiao.empty and len(df_evolucao_regiao) > 5:
         # Manter todas as regiões incluindo Atacado/Diretoria
         fig_temporal_regiao = px.line(
@@ -635,14 +645,14 @@ colunas_relevantes = []
 for col in df_filtrado.columns:
     col_lower = str(col).lower()
     if any(palavra in col_lower for palavra in [
-        'status', 'departamento', 'setor', 'data', 'cliente', 'produto', 'defeito', 
+        'status', 'departamento', 'setor', 'data', 'cliente', 'produto', 'defeito',
         'tecnico', 'observacao', 'observação', 'modelo', 'serie', 'número', 'telefone',
         'endereço', 'endereco', 'contato', 'razao', 'social', 'empresa', 'cliente',
         'regiao', 'região', 'regional', 'canal', 'venda', 'atacado', 'diretoria'
     ]):
         colunas_relevantes.append(col)
 
-colunas_exibir = [col for col in (colunas_relevantes or df_filtrado.columns.tolist()) 
+colunas_exibir = [col for col in (colunas_relevantes or df_filtrado.columns.tolist())
                   if col not in ['status_normalizado', 'departamento_normalizado', 'regiao_normalizada', 'data_convertida']]
 
 colunas_default = colunas_exibir[:min(8, len(colunas_exibir))]
